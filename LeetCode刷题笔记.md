@@ -2740,7 +2740,7 @@ class UF{
 
 
 
-
+### 5.1 图的遍历
 
 #### [797. All Paths From Source to Target](https://leetcode.cn/problems/all-paths-from-source-to-target/)
 
@@ -2796,6 +2796,8 @@ class Solution:
 ```
 
 
+
+### 5.2 拓扑排序
 
 #### [207. Course Schedule](https://leetcode.cn/problems/course-schedule/)
 
@@ -2985,11 +2987,13 @@ class Solution:
 
 
 
+### 5.3 二分图
+
 #### [785. Is Graph Bipartite?](https://leetcode.cn/problems/is-graph-bipartite/)
 
 <img src="LeetCode刷题笔记.assets/image-20220704155435195.png" alt="image-20220704155435195" style="zoom:80%;" />
 
-​		判断是否为二分图：通过遍历上色
+​		判断是否为二分图：通过遍历上色，对未上色邻接节点上与自己相反的颜色
 
 ```java
 boolean[] visited = null;
@@ -3139,7 +3143,7 @@ class Solution:
 
 
 
-
+### 5.4 并查集
 
 #### [130. Surrounded Regions](https://leetcode.cn/problems/surrounded-regions/)
 
@@ -3151,7 +3155,7 @@ DFS：对边界点进行DFS，将“O”改为“#”，其余的“O"则变为�
 
 Union-Find：将边界“O”归为“#”类，遍历其他内部点，合并所有四邻接连通“#”的“O”点，其余点变为“X”
 
-**tips：将⼆维数组映射到⼀维数组，利⽤⽅向数组step来简化代码量**
+**tips：将⼆维数组映射到⼀维数组，利用方向数组step来简化代码量**
 
 ```java
 // DFS
@@ -3291,7 +3295,7 @@ class UF{
 
 <img src="LeetCode刷题笔记.assets/image-20220705031702515.png" alt="image-20220705031702515" style="zoom:80%;" />
 
-
+并查集
 
 ```java
 int count;
@@ -3331,6 +3335,186 @@ public int find(int x){
 
 
 
+```python
+class Solution:
+    def equationsPossible(self, equations: List[str]) -> bool:
+        self.parent = [0]*26
+        
+        for i in range(26):
+            self.parent[i] = i
+
+        for eq in equations:
+            if eq[1] == '=':
+                self.union(ord(eq[0]) - ord('a'), ord(eq[3]) - ord('a'))
+
+        for eq in equations:
+            if eq[1] == '!' and self.find(ord(eq[0])- ord('a')) == self.find(ord(eq[3])- ord('a')): 
+                return False
+        return True
+
+    def find(self, cur):
+        if self.parent[cur] != cur:
+            self.parent[cur] = self.find(self.parent[cur])
+        return self.parent[cur]
+
+    def union(self, a, b):
+        p1 = self.find(a)
+        p2 = self.find(b)
+        self.parent[p2] = self.parent[p1]
+        return
+```
+
+
+
+### 5.5 最短路径
+
+
+
+- **Kruskal 算法：** 用于生成**最小生成树(MST, Minimum Spanning Tree)**，其流程：
+
+1. 将图G (V, E) 看做一个森林，每个顶点为一棵独立的树
+2. 将所有的边加入集合S，由小到大排序
+3. 从S中拿出一条最短的边(u,v)，如果(u,v)不在同一棵树内，则连接u,v合并这两棵树，同时将(u,v)加入生成树的边集E'
+4. 重复(3)直到所有点属于同一棵树，边集E'就是一棵最小生成树
+
+可借助**并查集**实现
+
+
+
+#### [1584. 连接所有点的最小费用](https://leetcode.cn/problems/min-cost-to-connect-all-points/)
+
+<img src="LeetCode刷题笔记.assets/image-20221128154346522.png" alt="image-20221128154346522" style="zoom: 80%;" />
+
+```python
+class Solution:
+    def find(self, cur):
+        if self.parent[cur] != cur:
+            self.parent[cur] = self.find(self.parent[cur])
+        return self.parent[cur]
+
+    def union(self, a, b):
+        p1 = self.find(a)
+        p2 = self.find(b)
+        self.parent[p2] = p1 
+
+    def minCostConnectPoints(self, points: List[List[int]]) -> int:
+        self.parent = list(range(len(points)))
+
+        edge_list = dict()
+        for i in range(len(points)):
+            for j in range(i+1, len(points)):
+                edge_list[(i, j)] = abs(points[i][0] - points[j][0]) + abs(points[i][1] - points[j][1])
+
+        edge_list = sorted(edge_list.items(), key=lambda x: (x[1], x[0]))
+
+        sum_cost = 0
+        for edge in edge_list:
+            if self.find(edge[0][0]) == self.find(edge[0][1]):
+                continue
+            else:
+                sum_cost += edge[1]
+                self.union(edge[0][0], edge[0][1])       
+
+        return sum_cost
+```
+
+
+
+- **Dijkstra 算法：**以**BFS的思想**，从起点开始扩展遍历，搜索到各个节点的最短路径（BFS通过visited标志限制循环次数，Dijkstra通过最短路径与否限制循环次数），通过**优先队列（最小堆）**可以优化时间复杂度
+
+```python
+...
+
+min_heap = [(0, start_node)]	# (dist, node_ID)
+dist = [float('inf')]*n
+dist[start] = 0
+
+while min_heap:
+    cur_dist, cur_node = heapq.heappop(min_heap)
+    if cur_dist > dist[cur_node]:	# 若原先路径更短
+        continue
+
+        for next_node, next_cost in graph[cur_node]:	
+            next_dist = cur_dist + next_cost
+            if next_dist < dist[next_node]:   # 若新路径到邻居节点更短，更新后续路径
+                dist[next_node] = next_dist
+                heapq.heappush(min_heap, (next_dist, next_node))
+...
+```
+
+
+
+#### [743. Network Delay Time](https://leetcode.cn/problems/network-delay-time/)
+
+<img src="LeetCode刷题笔记.assets/image-20221128152701257.png" alt="image-20221128152701257" style="zoom:80%;" />
+
+Dijkstra算法找出到起始节点到其他节点的最短路径，找出最大的最短路径
+
+```python
+class Solution:
+    def networkDelayTime(self, times: List[List[int]], n: int, k: int) -> int:
+        graph = [[] for i in range(n)]
+        # generate neighbor table
+        for x, y, time in times:
+            graph[x-1].append((y-1, time))
+
+        min_heap = [(0, k-1)]
+        dist = [float('inf')]*n
+        dist[k-1] = 0
+        
+        while min_heap:
+            cur_time, cur_node = heapq.heappop(min_heap)
+            if cur_time > dist[cur_node]:
+                continue
+            
+            for next_node, next_time in graph[cur_node]:
+                next_dist = cur_time + next_time
+                if next_dist < dist[next_node]:
+                    dist[next_node] = next_dist
+                    heapq.heappush(min_heap, (next_dist, next_node))
+
+        res = max(dist) 
+        return res if res != float('inf') else -1
+```
+
+
+
+#### [1631. 最小体力消耗路径](https://leetcode.cn/problems/path-with-minimum-effort/)
+
+<img src="LeetCode刷题笔记.assets/image-20221128173435686.png" alt="image-20221128173435686" style="zoom:80%;" />
+
+```python
+class Solution:
+    def minimumEffortPath(self, heights: List[List[int]]) -> int:
+        r, c = len(heights), len(heights[0])
+
+        offsets = [(1,0), (-1,0), (0,1), (0,-1)]
+
+        min_heap = [(0, (0,0))]
+        dist = dict([((i, j), float('inf')) for i in range(r) for j in range(c)])
+        dist[(0, 0)] = 0
+
+        while min_heap:
+            cur_effort, idx = heapq.heappop(min_heap)
+
+            if idx == (r-1, c-1):
+                return cur_effort
+
+            if cur_effort > dist[(idx[0], idx[1])]:
+                continue
+
+            for offset in offsets:
+                next_x, next_y = idx[0] + offset[0], idx[1] + offset[1]
+                if  0 <= next_x < r and 0 <= next_y < c:
+                    next_effort = abs(heights[idx[0]][idx[1]] - heights[next_x][next_y])
+                    max_effort = max(cur_effort, next_effort)
+                    if max_effort < dist[(next_x, next_y)]:
+                        dist[(next_x, next_y)] = max_effort
+                        heapq.heappush(min_heap, (max_effort, (next_x, next_y)))
+
+        return dist[r-1][c-1]
+```
+
 
 
 
@@ -3356,8 +3540,6 @@ public int find(int x){
 2. **具有最优子结构**，可以从⼦问题的最优结果推出更⼤规模问题的最优结果。
 
 3. **状态转移方程**（难点），通过状态转移方程穷举，找出状态转移方程思路：明确base case -> 明确状态 - > 明确选择 -> 定义DP数组或函数
-
-
 
 
 

@@ -109,7 +109,7 @@ WHERE ranking<=N;
 
 
 
-#### 补充知识：窗口函数2：
+#### 补充知识：窗口函数2
 
 偏移分析：**lag()为向上偏移取数，lead()为向下偏移取数, 必须有order by**
 
@@ -835,4 +835,259 @@ order by growth_rate desc, exam_cnt_rank_21 desc
 - `concat (round(值A/值B\*100,m),'%')`：百分比带百分号
 
 
+
+#### SQL142 对试卷得分做min-max归一化
+
+<img src="MySQL_Practice.assets/image-20221027112723927.png" alt="image-20221027112723927" style="zoom:80%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221027112807819.png" alt="image-20221027112807819" style="zoom:80%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221027112835859.png" alt="image-20221027112835859" style="zoom:80%;" />
+
+
+
+```sql
+select b.uid, b.exam_id, round(avg(b.new_score),0) avg_new_score
+from(
+    select 
+        a.uid,
+        a.exam_id,
+        if(a.min_score=a.max_score,a.score, (a.score-a.min_score)*100/(a.max_score - a.min_score)) new_score
+    from (
+        select 
+            uid,
+            exam_id,
+            score,
+            max(score) over(partition by exam_id) max_score,	# 通过窗口函数找试卷的最大最小分数，辅助后续计算
+            min(score) over(partition by exam_id) min_score
+        from exam_record er left join examination_info ei using(exam_id)
+        where difficulty = 'hard' and score is not null
+        ) a
+    ) b
+group by b.exam_id, b.uid
+order by exam_id, avg_new_score desc
+
+```
+
+
+
+#### **SQL143** 每份试卷每月作答数和截止当月的作答总数
+
+请输出每份试卷每月作答数和截止当月的作答总数
+
+<img src="MySQL_Practice.assets/image-20221027115339005.png" alt="image-20221027115339005" style="zoom:80%;" />
+
+```sql
+select exam_id,
+    start_month,
+    month_cnt,
+    sum(month_cnt) over(partition by exam_id order by start_month) cum_exam_cnt		# 通过窗口函数统计累计作答数
+from(
+    select exam_id, 
+        date_format(start_time, '%Y%m') start_month,
+        count(start_time) month_cnt		# 计算每月作答数
+    from exam_record
+    group by exam_id, start_month
+) as t1
+```
+
+* 统计累加次数：窗口函数`sum(XXX) over(partition by XXX order by XXX)`，
+
+
+
+#### SQL144 每月及截止当月的答题情况*
+
+请输出自从有用户作答记录以来，每月的试卷作答记录中月活用户数、新增用户数、截止当月的单月最大新增用户数、截止当月的累积用户数。结果按月份升序输出。
+
+<img src="MySQL_Practice.assets/image-20221031191144440.png" alt="image-20221031191144440" style="zoom:80%;" />
+
+```sql
+select 
+    start_month,
+    count(distinct uid)mau,
+    sum(is_active_month) month_add_uv,
+    max(sum(is_active_month)) over(order by start_month) max_month_add_uv,
+    sum(sum(is_active_month)) over(order by start_month) cum_sum_uv
+from (
+select uid,
+    date_format(start_time, '%Y%m') start_month, 
+    if(start_time = min(start_time) over(partition by uid) , 1, 0) is_active_month
+from exam_record
+) t1
+group by start_month
+order by start_month
+
+```
+
+- `group by` 与 窗口函数结合使用*
+
+
+
+#### SQL148 筛选昵称规则和试卷规则的作答记录
+
+找到昵称以"牛客"+纯数字+"号"或者纯数字组成的用户对于字母c开头的试卷类别（如C,C++,c#等）的已完成的试卷ID和平均得分，按用户ID、平均分升序排序
+
+<img src="MySQL_Practice.assets/image-20221101203235810.png" alt="image-20221101203235810" style="zoom:80%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221101203302346.png" alt="image-20221101203302346" style="zoom:80%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221101203323593.png" alt="image-20221101203323593" style="zoom:80%;" />
+
+
+
+```sql
+select
+    uid,
+    exam_id,
+    round(avg(score), 0) avg_score
+from exam_record er left join examination_info ei using(exam_id) left join user_info ui using(uid)
+where (nick_name REGEXP '^牛客[0-9]+号$' or nick_name REGEXP '^[0-9]+$') and tag REGEXP '^[Cc]'
+group by uid, exam_id
+having count(if(score is null, null, 1)) > 0
+order by uid, avg_score
+```
+
+- 正则表达式的使用
+
+
+
+#### **SQL149** 根据指定记录是否存在输出不同情况
+
+请你筛选表中的数据，当有任意一个0级用户未完成试卷数大于2时，输出每个0级用户的试卷未完成数和未完成率（保留3位小数）；若不存在这样的用户，则输出所有有作答记录的用户的这两个指标。结果按未完成率升序排序
+
+
+
+<img src="MySQL_Practice.assets/image-20221117075939607.png" alt="image-20221117075939607" style="zoom:67%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221117080003464.png" alt="image-20221117080003464" style="zoom:67%;" />
+
+
+
+```sql
+with temp as(
+    select uid, level, 
+    count(start_time)-count(submit_time) incomplete_cnt,
+    round((count(start_time)-count(submit_time))/ count(*), 3) incomplete_rate,
+    count(start_time) total_cnt
+    from user_info ui left join exam_record er using(uid)
+    group by uid
+)
+select uid, incomplete_cnt, incomplete_rate
+from temp
+where exists (select uid from temp where level=0 and incomplete_cnt>2) and level=0
+union all
+select uid, incomplete_cnt, incomplete_rate
+from temp
+where not exists (select uid from temp where level=0 and incomplete_cnt>2) and total_cnt > 0
+order by incomplete_rate
+```
+
+- 根据不同条件输出不同结果：`exists` 和 `not exists`语法结合`union`
+
+- 创建临时表格：with XXX_name as ( select 语句 )， 后续可以 通过表格名字调用表格
+
+
+
+#### **SQL152** 注册当天就完成了试卷的名单第三页
+
+找到求职方向为算法工程师，且注册当天就完成了算法类试卷的人，按参加过的所有考试最高得分排名。排名榜很长，我们将采用分页展示，每页3条，现在需要你取出第3页（页码从1开始）的人的信息
+
+<img src="MySQL_Practice.assets/image-20221121120032718.png" alt="image-20221121120032718" style="zoom:67%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221121120058943.png" alt="image-20221121120058943" style="zoom:67%;" />
+
+
+
+<img src="MySQL_Practice.assets/image-20221121120132994.png" alt="image-20221121120132994" style="zoom:67%;" />
+
+
+
+```sql
+select uid, level, register_time, max(score) max_score
+from exam_record er left join examination_info ei using(exam_id) left join user_info ui using(uid)
+where job = '算法' and tag = '算法' and date_format(submit_time, '%Y-%m-%d') = date_format(register_time, '%Y-%m-%d')
+group by uid
+order by max_score desc
+limit 6, 3
+```
+
+- `limit  跳过条数， 选取条数`
+
+
+
+#### **SQL153** 修复串列了的记录
+
+录题同学有一次手误将部分记录的试题类别tag、难度、时长同时录入到了tag字段，请帮忙找出这些录错了的记录，并拆分后按正确的列类型输出
+
+<img src="MySQL_Practice.assets/image-20221121123810626.png" alt="image-20221121123810626" style="zoom:67%;" />
+
+```sql
+select 
+    exam_id,
+    substring_index(tag, ',', 1) tag,
+    substring_index(substring_index(tag, ',', 2), ',', -1) difficulty,
+    substring_index(tag, ',', -1) duration
+from examination_info
+where tag like '%,%'
+```
+
+- `substring_index（“待截取字符串”，“截取依据的字符”，返回截取第N个逗号前部分的字符）`：N可以为负数，表示倒数第N个索引字符后面的字符串
+
+
+
+#### SQL154 对过长的昵称截取处理
+
+有的用户的昵称特别长，在一些展示场景会导致样式混乱，因此需要将特别长的昵称转换一下再输出，请输出字符数大于10的用户信息，对于字符数大于13的用户输出前10个字符然后加上三个点号 '...'
+
+![image-20221122144703009](MySQL_Practice.assets/image-20221122144703009.png)
+
+```sql
+select 
+    uid, 
+    if(char_length(nick_name) > 13, concat(substr(nick_name, 1, 10), '...'), nick_name) as nick_name
+from user_info
+where char_length(nick_name) > 10
+```
+
+- `char_length(str)`：返回字符串长度
+- `concat(str_1, str_2)`：组合字符串
+- `substr(str, start, end)`：截取字符串
+
+
+
+#### **SQL155** 大小写混乱时的筛选统计
+
+试卷的类别tag可能出现大小写混乱的情况，请先筛选出试卷作答数小于3的类别tag，统计将其转换为大写后对应的原本试卷作答数
+
+![image-20221122151118804](MySQL_Practice.assets/image-20221122151118804.png)
+
+
+
+![image-20221122151215962](MySQL_Practice.assets/image-20221122151215962.png)
+
+```sql
+with tag_cnt as (
+    select 
+        tag, 
+        count(start_time) answer_cnt
+    from exam_record er left join  examination_info ei using(exam_id)
+    group by tag
+)
+select 
+    a.tag,
+    b.answer_cnt
+from tag_cnt as a join tag_cnt as b on upper(a.tag) = b.tag and a.tag != b.tag and a.answer_cnt < 3
+```
 
